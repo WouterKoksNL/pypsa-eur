@@ -171,11 +171,13 @@ def map_to_country_bus(
     misassignment. Remaining unmatched plants are assigned via nearest
     neighbor (max 10000m) within the same country.
     """
+    if "country" not in regions.columns:
+        raise ValueError("regions GeoDataFrame must have a 'country' column, generated in cluster_network.py (kwarg with_country=True).")
     assigned = []
     unmatched = []
 
     for country, plants in ppl.groupby("Country"):
-        country_regions = regions[regions.index.str[:2] == country]
+        country_regions = regions.loc[regions.country == country].drop(columns="country")
         joined = (
             plants.sjoin(country_regions)
             .rename(columns={"name": "bus"})
@@ -189,7 +191,7 @@ def map_to_country_bus(
     if unmatched:
         unmatched = pd.concat(unmatched)
         for country, plants in unmatched.groupby("Country"):
-            country_regions = regions[regions.index.str[:2] == country]
+            country_regions = regions.loc[regions.country == country].drop(columns="country")
             nearest = (
                 plants.to_crs(3035)
                 .sjoin_nearest(country_regions.to_crs(3035), max_distance=max_distance)
