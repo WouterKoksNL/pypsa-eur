@@ -150,18 +150,52 @@ if __name__ == "__main__":
 
     regions = gpd.read_file(snakemake.input.distance_regions)
     # do not pull up, set_index does not work if geo dataframe is empty
-    regions = regions.set_index("name").rename_axis("bus")
+    regions = regions.set_index("name").rename_axis("bus").geometry
     if snakemake.wildcards.technology.startswith("offwind"):
         # for offshore regions, the shortest distance to the shoreline is used
         offshore_regions = availability.coords["bus"].values
-        regions = regions.loc[offshore_regions]
+        missing_offshore_regions = pd.Index(offshore_regions).difference(regions.index)
+        if not missing_offshore_regions.empty:
+            logger.warning(
+                "Missing %s offshore buses in distance regions. "
+                "Falling back to nearest onshore region geometry for distance calculation.",
+                len(missing_offshore_regions),
+            )
+            offshore_shapes = (
+                gpd.read_file(snakemake.input.resource_regions)
+                .set_index("name")
+                .rename_axis("bus")
+                .geometry
+            )
+            missing_offshore_shapes = offshore_shapes.reindex(missing_offshore_regions)
+            missing_offshore_shapes = missing_offshore_shapes[missing_offshore_shapes.notna()]
+
+            if not missing_offshore_shapes.empty:
+                onshore_geometries_3035 = regions.to_crs(3035)
+                offshore_points_3035 = missing_offshore_shapes.representative_point().to_crs(3035)
+
+                fallback_regions = {}
+                for bus, point in offshore_points_3035.items():
+                    nearest_bus = onshore_geometries_3035.distance(point).idxmin()
+                    fallback_regions[bus] = regions.loc[nearest_bus]
+
+                if fallback_regions:
+                    regions = pd.concat([regions, gpd.GeoSeries(fallback_regions, crs=regions.crs)])
+
+        regions = regions.reindex(offshore_regions)
+        if regions.isna().any():
+            missing_after_fallback = regions[regions.isna()].index.tolist()
+            raise KeyError(
+                "Offshore buses could not be mapped to distance regions: "
+                f"{missing_after_fallback}"
+            )
         regions = regions.map(lambda g: _simplify_polys(g, minarea=1)).set_crs(
             regions.crs
         )
     else:
         # for onshore regions, the representative point of the region is used
         regions = regions.representative_point()
-    regions = regions.geometry.to_crs(3035)
+    regions = regions.to_crs(3035)
     buses = regions.index
 
     area = cutout.grid.to_crs(3035).area / 1e6
