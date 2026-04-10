@@ -57,7 +57,7 @@ if __name__ == "__main__":
     excluder = atlite.ExclusionContainer(crs=3035, res=100)
 
     corine = config.get("corine", {})
-    if "grid_codes" in corine:
+    if corine and "grid_codes" in corine:
         # Land cover codes to emulate CORINE results
         if snakemake.wildcards.technology == "solar":
             codes = [20, 30, 40, 50, 60, 90, 100]
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         excluder.add_raster(
             snakemake.input.copernicus, codes=codes, invert=True, crs="EPSG:4326"
         )
-    if "distance" in corine and corine.get("distance", 0.0) > 0.0:
+    if corine and "distance" in corine and corine.get("distance", 0.0) > 0.0:
         # Land cover codes to emulate CORINE results
         if snakemake.wildcards.technology == "onwind":
             codes = [50]
