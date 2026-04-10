@@ -50,10 +50,12 @@ if __name__ == "__main__":
     regions = (
         gpd.read_file(snakemake.input.regions).set_index("name").rename_axis("bus")
     )
-    # Limit to "UA" and "MD" regions
-    buses = regions.filter(regex="(UA|MD)", axis=0).index.values
-    regions = regions.loc[buses]
 
+    # Limit to "UA" and "MD" regions
+    if 'country' not in regions.columns:
+      raise KeyError("Regions dataframe does not contain country column. Check that cluster_regions() has kwarg with_country=True in the cluster_network.py script.")
+    regions = regions.loc[regions.country.isin(['UA', 'MD'])]
+    buses = regions.index.values
     excluder = atlite.ExclusionContainer(crs=3035, res=100)
 
     corine = config.get("corine", {})
